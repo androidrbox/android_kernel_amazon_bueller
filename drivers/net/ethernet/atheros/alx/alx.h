@@ -42,12 +42,6 @@
 
 #include "alx_sw.h"
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0))
-#define __devinit
-#define __devexit
-#define __devexit_p
-#endif
-
 #define ALX_LINK_DOWN_CONFIG 1
 #define ALX_HIB_TASK_CONFIG  1
 #define ALX_HIB_TIMER_CONFIG 1

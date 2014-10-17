@@ -1715,7 +1715,7 @@ static inline int skb_add_data_nocache(struct sock *sk, struct sk_buff *skb,
 {
 	int err, offset = skb->len;
 
-	err = skb_do_copy_data_nocache(sk, skb, from, skb_put(skb, copy),
+	err = skb_do_copy_data_nocache(sk, skb, from, (char *)skb_put(skb, copy),
 				       copy, offset);
 	if (err)
 		__skb_trim(skb, offset);
