@@ -25,6 +25,8 @@
 #define KEXEC_HB_PAGE_ADDR		UL(0x88C00000)
 #elif defined(CONFIG_MACH_APQ8064_MAKO)
 #define KEXEC_HB_PAGE_ADDR		UL(0x88600000)
+#elif defined(CONFIG_MACH_APQ8064_BUELLER)
+#define KEXEC_HB_PAGE_ADDR		UL(0x88C00000)
 #else
 #error "Adress for kexec hardboot page not defined"
 #endif
