@@ -88,6 +88,8 @@
 #include "pm-boot.h"
 #include "devices-msm8x60.h"
 #include "smd_private.h"
+#include <linux/persistent_ram.h>
+#include <ram_console.h>
 
 /*#define MHL_GPIO_INT           30
 #define MHL_GPIO_RESET         35*/
@@ -144,6 +146,13 @@
 
 /* SPDIF buffer enable ping */
 #define SPDIF_BUFFER_ENABLE_GPIO 5
+
+#ifdef CONFIG_ANDROID_PERSISTENT_RAM
+#define PERSISTENT_RAM_SIZE SZ_1M
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+#define RAM_CONSOLE_SIZE (124*SZ_1K * 2)
+#endif
+#endif
 
 static struct wake_lock bueller_wake_lock;
 
@@ -324,6 +333,67 @@ static struct platform_device apq8064_android_pmem_audio_device = {
 };
 #endif /* CONFIG_MSM_MULTIMEDIA_USE_ION */
 #endif /* CONFIG_ANDROID_PMEM */
+
+#ifdef CONFIG_ANDROID_PERSISTENT_RAM
+static struct persistent_ram_descriptor pram_descs[] = {
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+	{
+		.name = "ram_console",
+		.size = RAM_CONSOLE_SIZE,
+	},
+#endif
+};
+
+static struct persistent_ram bueller_persistent_ram = {
+	.size = PERSISTENT_RAM_SIZE,
+	.num_descs = ARRAY_SIZE(pram_descs),
+	.descs = pram_descs,
+};
+
+void __init bueller_add_persistent_ram(void)
+{
+	struct persistent_ram *pram = &bueller_persistent_ram;
+	struct membank* bank = &meminfo.bank[0];
+
+	pram->start = bank->start + bank->size - PERSISTENT_RAM_SIZE;
+
+	persistent_ram_early_init(pram);
+}
+#endif
+
+void __init bueller_reserve(void)
+{
+	bueller_add_persistent_ram();
+}
+
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+static char bootreason[128] = {0,};
+int __init bueller_boot_reason(char *s)
+{
+	int n;
+
+	if (*s == '=')
+		s++;
+	n = snprintf(bootreason, sizeof(bootreason),
+		"Boot info:\n"
+		"Last boot reason: %s\n", s);
+	bootreason[n] = '\0';
+	return 1;
+}
+__setup("bootreason", bueller_boot_reason);
+
+struct ram_console_platform_data ram_console_pdata = {
+	.bootinfo = bootreason,
+};
+
+static struct platform_device ram_console_device = {
+	.name = "ram_console",
+	.id = -1,
+	.dev = {
+		.platform_data = &ram_console_pdata,
+	}
+};
+#endif /* CONFIG_ANDROID_RAM_CONSOLE */
 
 struct fmem_platform_data apq8064_fmem_pdata = {
 };
@@ -824,6 +894,7 @@ static void __init apq8064_reserve(void)
 	apq8064_set_display_params(prim_panel_name, ext_panel_name,
 		ext_resolution);
 	msm_reserve();
+	bueller_reserve();
 }
 
 static void __init apq8064_early_reserve(void)
@@ -2130,6 +2201,7 @@ static void __init apq8064_common_init(void)
 {
 	struct resource *res;
 
+	platform_device_register(&ram_console_device);
 	platform_device_register(&msm_gpio_device);
 	msm_tsens_early_init(&apq_tsens_pdata);
 	msm_thermal_init(&msm_thermal_pdata);
