@@ -1116,8 +1116,13 @@ static int phy_init_seq[] = {
 #define MSM_MPM_PIN_USB1_DPSHV		26
 
 static struct msm_otg_platform_data msm_otg_pdata = {
+#ifdef USES_FX_MFT
+	.mode			= USB_PERIPHERAL,
+	.otg_control		= OTG_PHY_CONTROL,
+#else
 	.mode			= USB_OTG,
 	.otg_control		= OTG_PMIC_CONTROL,
+#endif
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
 	.pmic_id_irq		= PM8921_USB_ID_IN_IRQ(PM8921_IRQ_BASE),
 	.power_budget		= 750,
