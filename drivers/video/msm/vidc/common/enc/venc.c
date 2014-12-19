@@ -1829,6 +1829,8 @@ static long vid_enc_ioctl(struct file *file,
 		if (copy_to_user(venc_msg.out,
 			&curr_perf_level, sizeof(u32)))
 			return -EFAULT;
+		break;
+	}
 	case VEN_IOCTL_SET_VUI_BITSTREAM_RESTRICT_FLAG:
 	{
 		struct vcd_property_hdr vcd_property_hdr;
