@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2004-2010 Atheros Communications Inc.
- * Copyright (c) 2011 Qualcomm Atheros, Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -20,10 +19,12 @@
 
 #define AR6003_BOARD_DATA_SZ		1024
 #define AR6003_BOARD_EXT_DATA_SZ	768
-#define AR6003_BOARD_EXT_DATA_SZ_V2	1024
 
 #define AR6004_BOARD_DATA_SZ     6144
 #define AR6004_BOARD_EXT_DATA_SZ 0
+
+#define AR6006_BOARD_DATA_SZ     6144
+#define AR6006_BOARD_EXT_DATA_SZ 0
 
 #define RESET_CONTROL_ADDRESS		0x00000000
 #define RESET_CONTROL_COLD_RST		0x00000100
@@ -125,6 +126,10 @@
 #define GPIO_BASE_ADDRESS		0x00014000
 #define MBOX_BASE_ADDRESS		0x00018000
 #define ANALOG_INTF_BASE_ADDRESS	0x0001c000
+#define WLAN_BOOTSTRAP_ADDRESS          0x00014140
+
+#define BOOTSTRAP_IS_HSIC(v)            ((v) & (1 << 10))
+#define BOOTSTRAP_IS_USB(v)             ((v) & (1 << 11))
 
 /* real name of the register is unknown */
 #define ATH6KL_ANALOG_PLL_REGISTER	(ANALOG_INTF_BASE_ADDRESS + 0x284)
@@ -142,6 +147,7 @@
  */
 #define ATH6KL_AR6003_HI_START_ADDR           0x00540600
 #define ATH6KL_AR6004_HI_START_ADDR           0x00400800
+#define ATH6KL_AR6006_HI_START_ADDR           0x00428800
 
 /*
  * These are items that the Host may need to access
@@ -295,6 +301,12 @@ struct host_interest {
 	u32 hi_cal_data;                               /* 0xe4 */
 	/* Number of packet log buffers */
 	u32 hi_pktlog_num_buffers;                     /* 0xe8 */
+	/* wow extension configuration */
+	u32 hi_wow_ext_config;                         /* 0xec */
+	/* power save flags */
+	u32 hi_pwr_save_flags;                         /* 0xf0 */
+	/* Spatial Multiplexing Power Save (SMPS) options */
+	u32 hi_smps_options;                           /* 0xf4 */
 
 } __packed;
 
@@ -311,9 +323,47 @@ struct host_interest {
 #define HI_OPTION_FW_SUBMODE_P2PCLIENT 0x2
 #define HI_OPTION_FW_SUBMODE_P2PGO     0x3
 
+#define HI_OPTION_DISABLE_DBGLOG       0x40
+
+/* hi_option_flag2 options: Disable MAC address overwrite via OTP Feature */
+#define HI_OPTION_DISABLE_MAC_OTP       0x40
+
 #define HI_OPTION_NUM_DEV_SHIFT   0x9
 
 #define HI_OPTION_FW_BRIDGE_SHIFT 0x04
+
+/* Disable RTT Feature */
+#define HI_OPTION_DISABLE_RTT 0x20
+
+/* Disable p2p dedicate device */
+#define HI_OPTION_DISABLE_P2P_DEDICATE          0x100
+
+/* Ext patch download finished after WMI ready*/
+#define HI_OPTION_EXT_FW_DOWNLOAD_DONE          0x80000
+
+/*Enable cold reset when firmware crash*/
+#define HI_OPTION_FW_CRASH_COLD_RESET          0x100000
+
+/*Enable watchdog*/
+#define HI_OPTION_FW_WATCHDOG_ENABLE		0x200000
+
+/*Enable AMSDU WAR*/
+#define HI_OPTION_ENABLE_PANASONIC_WAR 0x1000000
+
+/* Enable one shot noa */
+#define HI_OPTION_ONE_SHOT_NOA_ENABLE		0x2000000
+
+/* Enable SB specific function */
+#define HI_OPTION_ENABLE_SB_SPECIFIC      0x4000000
+
+/* Enable single chain in wow */
+#define HI_OPTION_WOW_SINGLE_CHAIN		0x8000000
+
+/*Enable/Disable Wifi Heart Beat Feature*/
+#define HI_OPTION_ENABLE_WLAN_HB              0x10000000
+
+/* Enable Multichannel Concurrency (MCC) - last bit to sync with mainline */
+#define HI_OPTION_MCC_ENABLE                  0x80000000
 
 /* Fw Mode/SubMode Mask
 |------------------------------------------------------------------------------|
@@ -328,13 +378,25 @@ struct host_interest {
 #define HI_OPTION_FW_SUBMODE_BITS      0x2
 #define HI_OPTION_FW_SUBMODE_SHIFT     0x14
 
+/*power save flag bit definitions*/
+#define HI_PWR_SAVE_LPL_ENABLED        0x1
+
+/* power save mode - reduced power listen */
+#define HI_PWR_SAVE_LPL_MODE_RPL	2
+#define HI_PWR_SAVE_LPL_MODE_LSB	4
+
+/* SM power save options */
+#define HI_SMPS_ALLOW_MASK             0x1
+
 /* Convert a Target virtual address into a Target physical address */
 #define AR6003_VTOP(vaddr) ((vaddr) & 0x001fffff)
 #define AR6004_VTOP(vaddr) (vaddr)
+#define AR6006_VTOP(vaddr) (vaddr)
 
 #define TARG_VTOP(target_type, vaddr) \
 	(((target_type) == TARGET_TYPE_AR6003) ? AR6003_VTOP(vaddr) : \
-	(((target_type) == TARGET_TYPE_AR6004) ? AR6004_VTOP(vaddr) : 0))
+	(((target_type) == TARGET_TYPE_AR6004) ? AR6004_VTOP(vaddr) : \
+	(((target_type) == TARGET_TYPE_AR6006) ? AR6006_VTOP(vaddr) : 0)))
 
 #define ATH6KL_FWLOG_PAYLOAD_SIZE		1500
 

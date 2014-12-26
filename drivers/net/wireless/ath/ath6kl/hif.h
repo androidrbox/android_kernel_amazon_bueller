@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2004-2011 Atheros Communications Inc.
- * Copyright (c) 2011 Qualcomm Atheros, Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -37,6 +36,8 @@
 
 #define MANUFACTURER_ID_AR6003_BASE        0x300
 #define MANUFACTURER_ID_AR6004_BASE        0x400
+/*#define MANUFACTURER_ID_AR6006_BASE        0x600*/
+#define MANUFACTURER_ID_AR6006_BASE        0xD00
     /* SDIO manufacturer ID and Codes */
 #define MANUFACTURER_ID_ATH6KL_BASE_MASK     0xFF00
 #define MANUFACTURER_CODE                  0x271	/* Atheros */
@@ -197,9 +198,9 @@ struct hif_scatter_req {
 	/* bounce buffer for upper layers to copy to/from */
 	u8 *virt_dma_buf;
 
-	struct hif_scatter_item scat_list[1];
-
 	u32 scat_q_depth;
+
+	struct hif_scatter_item scat_list[1];
 };
 
 struct ath6kl_irq_proc_registers {
@@ -222,8 +223,17 @@ struct ath6kl_irq_enable_reg {
 	u8 cntr_int_status_en;
 } __packed;
 
+/**
+ * @brief List of callbacks - filled in by HTC.
+ */
+struct ath6kl_hif_pipe_callbacks {
+	int (*tx_completion) (struct htc_target *context, struct sk_buff * skb);
+	int (*rx_completion) (struct htc_target *context,
+				struct sk_buff *skb, u8 pipe);
+	void (*tx_resource_available) (struct htc_target *context, u8 pipe);
+};
+
 struct ath6kl_device {
-	/* protects irq_proc_reg and irq_en_reg below */
 	spinlock_t lock;
 	struct ath6kl_irq_proc_registers irq_proc_reg;
 	struct ath6kl_irq_enable_reg irq_en_reg;
@@ -256,6 +266,40 @@ struct ath6kl_hif_ops {
 	int (*power_on)(struct ath6kl *ar);
 	int (*power_off)(struct ath6kl *ar);
 	void (*stop)(struct ath6kl *ar);
+	int (*get_stat)(struct ath6kl *ar, u8 *buf, int buf_len);
+	void (*pipe_register_callback)(struct ath6kl *ar,
+		void *htc_context, struct ath6kl_hif_pipe_callbacks *callbacks);
+	int (*pipe_send)(struct ath6kl *ar, u8 pipe, struct sk_buff *hdr_buf,
+		struct sk_buff *buf);
+	void (*pipe_get_default)(struct ath6kl *ar, u8 *pipe_ul, u8 *pipe_dl);
+	int (*pipe_map_service)(struct ath6kl *ar, u16 service_id, u8 *pipe_ul,
+		u8 *pipe_dl);
+	u16 (*pipe_get_free_queue_number)(struct ath6kl *ar, u8 pipe);
+	int (*pipe_send_bundle)(struct ath6kl *ar, u8 pid,
+		struct sk_buff **msg_bundle, int num_msgs);
+	u16 (*pipe_get_max_queue_number)(struct ath6kl *ar, u8 pipe);
+	void (*pipe_set_max_queue_number)(struct ath6kl *ar, bool mccEnable);
+	int (*pipe_set_max_sche)(struct ath6kl *ar, u32 max_sche_tx,
+		u32 max_sche_rx);
+	int (*diag_warm_reset)(struct ath6kl *ar);
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	void (*early_suspend)(struct ath6kl *ar);
+	void (*late_resume)(struct ath6kl *ar);
+#endif
+	int (*bus_config)(struct ath6kl *ar);
+
+#ifdef USB_AUTO_SUSPEND
+	int (*auto_pm_get_usage_cnt)(struct ath6kl *ar);
+	int (*auto_pm_disable)(struct ath6kl *ar);
+	void (*auto_pm_enable)(struct ath6kl *ar);
+	void (*auto_pm_turnon)(struct ath6kl *ar);
+	void (*auto_pm_turnoff)(struct ath6kl *ar);
+	void (*auto_pm_set_delay)(struct ath6kl *ar, int delay);
+#endif
+	int (*pipe_set_rxq_threshold)(struct ath6kl *ar, u32 rxq_threshold);
+#ifdef ATH6KL_HSIC_RECOVER
+	int (*sw_recover)(struct ath6kl *ar);
+#endif
 };
 
 int ath6kl_hif_setup(struct ath6kl_device *dev);

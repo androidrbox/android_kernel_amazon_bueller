@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2004-2011 Atheros Communications Inc.
- * Copyright (c) 2011 Qualcomm Atheros, Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -136,6 +135,39 @@
 #define TARGET_VERSION_SENTINAL 0xffffffff
 #define TARGET_TYPE_AR6003      3
 #define TARGET_TYPE_AR6004      5
+#define TARGET_TYPE_AR6006      6
+
+/*
+ * Only for AR6004v4 or later & AR6006
+ *
+ * It's better not to use this define in code.
+ * Instead, using ATH6KL_VIF_MAX in the host driver scope.
+ */
+#define TARGET_VIF_MAX		(4)
+
+/*
+ * BIT0 : Single or Dual
+ * BIT1 : 1SS or 2SS
+ * BIT2 : HT20-Only or HT20/40
+ */
+#define TARGET_SUBTYPE_DUAL	BIT(0)
+#define TARGET_SUBTYPE_2SS	BIT(1)
+#define TARGET_SUBTYPE_HT40	BIT(2)
+
+#define TARGET_SUBTYPE_HT20_1SS_SING_BAND	(0)
+#define TARGET_SUBTYPE_HT40_1SS_SING_BAND	(TARGET_SUBTYPE_HT40)
+#define TARGET_SUBTYPE_HT20_1SS_DUAL_BAND	(TARGET_SUBTYPE_DUAL)
+#define TARGET_SUBTYPE_HT40_1SS_DUAL_BAND	(TARGET_SUBTYPE_HT40 | \
+						 TARGET_SUBTYPE_DUAL)
+#define TARGET_SUBTYPE_HT20_2SS_SING_BAND	(TARGET_SUBTYPE_2SS)
+#define TARGET_SUBTYPE_HT40_2SS_SING_BAND	(TARGET_SUBTYPE_HT40 | \
+						 TARGET_SUBTYPE_2SS)
+#define TARGET_SUBTYPE_HT20_2SS_DUAL_BAND	(TARGET_SUBTYPE_DUAL | \
+						 TARGET_SUBTYPE_2SS)
+#define TARGET_SUBTYPE_HT40_2SS_DUAL_BAND	(TARGET_SUBTYPE_HT40 | \
+						 TARGET_SUBTYPE_DUAL | \
+						 TARGET_SUBTYPE_2SS)
+
 #define BMI_ROMPATCH_INSTALL               9
 /*
  * Semantics: Install a ROM Patch.
@@ -222,29 +254,6 @@ struct ath6kl_bmi_target_info {
 	__le32 version;      /* target version id */
 	__le32 type;         /* target type */
 } __packed;
-
-#define ath6kl_bmi_write_hi32(ar, item, val)				\
-	({								\
-		u32 addr;						\
-		__le32 v;						\
-									\
-		addr = ath6kl_get_hi_item_addr(ar, HI_ITEM(item));	\
-		v = cpu_to_le32(val);					\
-		ath6kl_bmi_write(ar, addr, (u8 *) &v, sizeof(v));	\
-	})
-
-#define ath6kl_bmi_read_hi32(ar, item, val)				\
-	({								\
-		u32 addr, *check_type = val;				\
-		__le32 tmp;						\
-		int ret;						\
-									\
-		(void) (check_type == val);				\
-		addr = ath6kl_get_hi_item_addr(ar, HI_ITEM(item));	\
-		ret = ath6kl_bmi_read(ar, addr, (u8 *) &tmp, 4);	\
-		*val = le32_to_cpu(tmp);				\
-		ret;							\
-	})
 
 int ath6kl_bmi_init(struct ath6kl *ar);
 void ath6kl_bmi_cleanup(struct ath6kl *ar);

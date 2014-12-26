@@ -30,3 +30,9 @@ config ATH6KL_DEBUG
 	depends on ATH6KL
 	---help---
 	  Enables debug support
+	  
+config ATH6KL_ENABLE_FW_API2
+	bool "Enable Atheros ath6kl FW API2 "
+	depends on ATH6KL
+	---help---
+	  Enables Atheros ath6kl FW API2

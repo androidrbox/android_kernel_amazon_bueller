@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2004-2011 Atheros Communications Inc.
- * Copyright (c) 2011 Qualcomm Atheros, Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,6 +17,7 @@
 #ifndef HTC_H
 #define HTC_H
 
+#include "core.h"
 #include "common.h"
 
 /* frame header flags */
@@ -25,6 +25,7 @@
 /* send direction */
 #define HTC_FLAGS_NEED_CREDIT_UPDATE (1 << 0)
 #define HTC_FLAGS_SEND_BUNDLE        (1 << 1)
+#define HTC_FLAGS_TX_FIXUP_NETBUF    (1 << 2)
 
 /* receive direction */
 #define HTC_FLG_RX_UNUSED        (1 << 0)
@@ -56,6 +57,10 @@
 #define HTC_CONN_FLGS_THRESH_LVL_THREE_QUAT	0x2
 #define HTC_CONN_FLGS_REDUCE_CRED_DRIB		0x4
 #define HTC_CONN_FLGS_THRESH_MASK		0x3
+/* disable credit flow control on a specific service */
+#define HTC_CONN_FLGS_DISABLE_CRED_FLOW_CTRL          (1 << 3)
+#define HTC_CONN_FLGS_SET_RECV_ALLOC_SHIFT    8
+#define HTC_CONN_FLGS_SET_RECV_ALLOC_MASK     0xFF00
 
 /* connect response status codes */
 #define HTC_SERVICE_SUCCESS      0
@@ -75,6 +80,7 @@
 #define HTC_RECORD_LOOKAHEAD_BUNDLE 3
 
 #define HTC_SETUP_COMP_FLG_RX_BNDL_EN     (1 << 0)
+#define HTC_SETUP_COMP_FLG_DISABLE_TX_CREDIT_FLOW (1 << 1)
 
 #define MAKE_SERVICE_ID(group, index) \
 	(int)(((int)group << 8) | (int)(index))
@@ -109,6 +115,9 @@
 
 /* HTC operational parameters */
 #define HTC_TARGET_RESPONSE_TIMEOUT        2000	/* in ms */
+#define HTC_TARGET_RESPONSE_POLL_WAIT      10
+#define HTC_TARGET_RESPONSE_POLL_MS	   (HTC_TARGET_RESPONSE_POLL_WAIT)
+#define HTC_TARGET_RESPONSE_POLL_COUNT     200
 #define HTC_TARGET_DEBUG_INTR_MASK         0x01
 #define HTC_TARGET_CREDIT_INTR_MASK        0xF0
 
@@ -128,6 +137,7 @@
 
 #define HTC_RECV_WAIT_BUFFERS        (1 << 0)
 #define HTC_OP_STATE_STOPPING        (1 << 0)
+#define HTC_OP_STATE_SETUP_COMPLETE  (1 << 1)
 
 /*
  * The frame header length and message formats defined herein were selected
@@ -311,6 +321,22 @@ struct htc_packet {
 
 	void (*completion) (struct htc_target *, struct htc_packet *);
 	struct htc_target *context;
+
+	/*
+	 * optimization for network-oriented data, the HTC packet
+	 * can pass the network buffer corresponding to the HTC packet
+	 * lower layers may optimized the transfer knowing this is
+	 * a network buffer
+	 */
+	struct sk_buff *skb;
+
+	/* P2P flowctrl */
+	u8 connid;
+	u8 recycle_count;
+
+	struct ath6kl_vif *vif;
+
+	bool alloc_from_vmalloc;
 };
 
 enum htc_send_full_action {
@@ -319,12 +345,14 @@ enum htc_send_full_action {
 };
 
 struct htc_ep_callbacks {
+	void (*tx_complete) (struct htc_target *, struct htc_packet *);
 	void (*rx) (struct htc_target *, struct htc_packet *);
 	void (*rx_refill) (struct htc_target *, enum htc_endpoint_id endpoint);
 	enum htc_send_full_action (*tx_full) (struct htc_target *,
 					      struct htc_packet *);
 	struct htc_packet *(*rx_allocthresh) (struct htc_target *,
 					      enum htc_endpoint_id, int);
+	void (*tx_comp_multi) (struct htc_target *, struct list_head *);
 	int rx_alloc_thresh;
 	int rx_refill_thresh;
 };
@@ -405,6 +433,9 @@ struct htc_endpoint_credit_dist {
 	 * that has non-zero credits to recover.
 	 */
 	int txq_depth;
+
+	/* maximum credits the ep can allocate */
+	int cred_alloc_max;
 };
 
 /*
@@ -502,11 +533,67 @@ struct htc_endpoint {
 	u32 conn_flags;
 	struct htc_endpoint_stats ep_st;
 	u16 tx_drop_packet_threshold;
+
+	u8 pipeid_ul;
+	u8 pipeid_dl;
+	struct list_head tx_lookup_queue;
+	bool tx_credit_flow_enabled;
+
+	struct timer_list timer;
+	u8 call_by_timer;
+	u8 timer_init;
+	u8 pass_th;
+	u8 starving;
+	unsigned long last_sent;
 };
 
 struct htc_control_buffer {
 	struct htc_packet packet;
 	u8 *buf;
+};
+
+struct htc_pipe_txcredit_alloc {
+	u16 service_id;
+	u8 credit_alloc;
+};
+
+enum htc_send_queue_result {
+	HTC_SEND_QUEUE_OK = 0,	/* packet was queued */
+	HTC_SEND_QUEUE_DROP = 1,	/* this packet should be dropped */
+};
+
+struct ath6kl_htc_ops {
+	void* (*create)(struct ath6kl *ar);
+	int (*wait_target)(struct htc_target *target);
+	int (*start)(struct htc_target *target);
+	int (*conn_service)(struct htc_target *target,
+		struct htc_service_connect_req *req,
+		struct htc_service_connect_resp *resp);
+	int  (*tx)(struct htc_target *target, struct htc_packet *packet);
+	void (*stop)(struct htc_target *target);
+	void (*cleanup)(struct htc_target *target);
+	void (*flush_txep)(struct htc_target *target,
+		enum htc_endpoint_id endpoint, u16 tag);
+	void (*flush_rx_buf)(struct htc_target *target);
+	void (*indicate_activity_change)(struct htc_target *target,
+		enum htc_endpoint_id endpoint,
+		bool active);
+	int (*get_rxbuf_num)(struct htc_target *target,
+		enum htc_endpoint_id endpoint);
+	int (*add_rxbuf_multiple)(struct htc_target *target,
+		struct list_head *pktq);
+	int (*credit_setup)(struct htc_target *target,
+		struct ath6kl_htc_credit_info *cred_info);
+	int (*get_stat)(struct htc_target *target,
+						 u8 *buf, int buf_len);
+	int (*stop_netif_queue_full)(struct htc_target *target);
+	int (*indicate_wmm_schedule_change)(struct htc_target *target,
+		bool change);
+	int (*change_credit_bypass)(struct htc_target *target,
+		u8 traffic_class);
+#ifdef USB_AUTO_SUSPEND
+	bool (*skip_usb_mark_busy)(struct ath6kl *ar, struct sk_buff *skb);
+#endif
 };
 
 struct ath6kl_device;
@@ -523,16 +610,9 @@ struct htc_target {
 	struct ath6kl_htc_credit_info *credit_info;
 	int tgt_creds;
 	unsigned int tgt_cred_sz;
-
-	/* protects free_ctrl_txbuf and free_ctrl_rxbuf */
 	spinlock_t htc_lock;
-
-	/* FIXME: does this protext rx_bufq and endpoint structures or what? */
 	spinlock_t rx_lock;
-
-	/* protects endpoint->txq */
 	spinlock_t tx_lock;
-
 	struct ath6kl_device *dev;
 	u32 htc_flags;
 	u32 rx_st_flags;
@@ -557,35 +637,23 @@ struct htc_target {
 
 	/* counts the number of Tx without bundling continously per AC */
 	u32 ac_tx_count[WMM_NUM_AC];
+
+	struct htc_packet *htc_packet_pool;	/* pool of HTC packets */
+	u8 ctrl_response_buf[HTC_MAX_CTRL_MSG_LEN];
+	int ctrl_response_len;
+	bool ctrl_response_valid;
+	struct htc_pipe_txcredit_alloc txcredit_alloc[ENDPOINT_MAX];
+	int avail_tx_credits;
+
+	struct sk_buff_head rx_sg_q;
+	bool rx_sg_in_progress;
+	u32 rx_sg_total_len_cur; /* current total length */
+	u32 rx_sg_total_len_exp; /* expected total length */
+
 };
 
-void *ath6kl_htc_create(struct ath6kl *ar);
-void ath6kl_htc_set_credit_dist(struct htc_target *target,
-				struct ath6kl_htc_credit_info *cred_info,
-				u16 svc_pri_order[], int len);
-int ath6kl_htc_wait_target(struct htc_target *target);
-int ath6kl_htc_start(struct htc_target *target);
-int ath6kl_htc_conn_service(struct htc_target *target,
-			    struct htc_service_connect_req *req,
-			    struct htc_service_connect_resp *resp);
-int ath6kl_htc_tx(struct htc_target *target, struct htc_packet *packet);
-void ath6kl_htc_stop(struct htc_target *target);
-void ath6kl_htc_cleanup(struct htc_target *target);
-void ath6kl_htc_flush_txep(struct htc_target *target,
-			   enum htc_endpoint_id endpoint, u16 tag);
-void ath6kl_htc_flush_rx_buf(struct htc_target *target);
-void ath6kl_htc_indicate_activity_change(struct htc_target *target,
-					 enum htc_endpoint_id endpoint,
-					 bool active);
-int ath6kl_htc_get_rxbuf_num(struct htc_target *target,
-			     enum htc_endpoint_id endpoint);
-int ath6kl_htc_add_rxbuf_multiple(struct htc_target *target,
-				  struct list_head *pktq);
 int ath6kl_htc_rxmsg_pending_handler(struct htc_target *target,
 				     u32 msg_look_ahead, int *n_pkts);
-
-int ath6kl_credit_setup(void *htc_handle,
-			struct ath6kl_htc_credit_info *cred_info);
 
 static inline void set_htc_pkt_info(struct htc_packet *packet, void *context,
 				    u8 *buf, unsigned int len,
