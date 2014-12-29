@@ -1445,7 +1445,7 @@ static struct snd_soc_dai_link msm_dai[] = {
 
 
 static struct snd_soc_card snd_soc_card_msm = {
-	.name		= "bueller-snd-card",
+	.name		= "apq8064-tabla-snd-card",
 	.dai_link	= msm_dai,
 	.num_links	= ARRAY_SIZE(msm_dai),
 	.controls = bueller_msm_controls,
